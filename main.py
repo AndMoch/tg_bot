@@ -1,7 +1,9 @@
 import time
 from datetime import date, datetime
 import logging
-from telegram.ext import Application, MessageHandler, filters, CommandHandler
+
+from telegram import ReplyKeyboardMarkup
+from telegram.ext import Application, MessageHandler, filters, CommandHandler, ConversationHandler
 from dotenv import dotenv_values
 
 BOT_TOKEN = dotenv_values(".env")['BOT_TOKEN']
@@ -11,6 +13,15 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+start_keyboard = [['/dice', '/timer']]
+start_markup = ReplyKeyboardMarkup(start_keyboard, one_time_keyboard=False)
+
+roll_keyboard = [['/roll 1', '/roll 2', '/roll 20']]
+roll_markup = ReplyKeyboardMarkup(roll_keyboard, one_time_keyboard=False)
+
+timer_keyboard = [['/set_timer 30', '/set_timer 60', '/set_timer 300']]
+timer_markup = ReplyKeyboardMarkup(timer_keyboard, one_time_keyboard=False)
 
 
 async def echo(update, context):
@@ -59,6 +70,31 @@ async def unset(update, context):
     await update.message.reply_text(text)
 
 
+async def start(update, context):
+    await update.message.reply_text (
+        "Привет. Я помощник для настольных игр. Выберите желаемое действие.", reply_markup=start_markup)
+    return 1
+
+
+async def dice(update, context):
+    locality = update.message.text
+    await update.message.reply_text (
+        f"Какая погода в городе {locality}?")
+    return 2
+
+
+async def timer(update, context):
+    weather = update.message.text
+    logger.info(weather)
+    await update.message.reply_text("Спасибо за участие в опросе! Всего доброго!")
+    return ConversationHandler.END
+
+
+async def stop(update, context):
+    await update.message.reply_text ("Всего доброго!")
+    return ConversationHandler.END
+
+
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
@@ -66,6 +102,15 @@ def main():
     application.add_handler(CommandHandler("date", date_show))
     application.add_handler(CommandHandler("set_timer", set_timer))
     application.add_handler(CommandHandler("unset", unset))
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+
+        states={
+            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, first_response)],
+            2: [MessageHandler(filters.TEXT & ~filters.COMMAND, second_response)]
+        },
+        fallbacks=[CommandHandler('stop', stop)]
+    ))
     application.run_polling()
 
 
