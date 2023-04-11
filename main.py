@@ -1,8 +1,8 @@
 import time
 from datetime import date, datetime
 import logging
-
-from telegram import ReplyKeyboardMarkup
+import random
+from telegram import ReplyKeyboardMarkup, InlineKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, MessageHandler, filters, CommandHandler, ConversationHandler
 from dotenv import dotenv_values
 
@@ -17,11 +17,15 @@ logger = logging.getLogger(__name__)
 start_keyboard = [['/dice', '/timer']]
 start_markup = ReplyKeyboardMarkup(start_keyboard, one_time_keyboard=False)
 
-roll_keyboard = [['/roll 1', '/roll 2', '/roll 20']]
+roll_keyboard = [['/roll 1x6', '/roll 2x6', '/roll 1x20', '/stop']]
 roll_markup = ReplyKeyboardMarkup(roll_keyboard, one_time_keyboard=False)
 
-timer_keyboard = [['/set_timer 30', '/set_timer 60', '/set_timer 300']]
+timer_keyboard = [['/set_timer 30', '/set_timer 60', '/set_timer 300', '/stop']]
 timer_markup = ReplyKeyboardMarkup(timer_keyboard, one_time_keyboard=False)
+
+
+close_keyboard = [['/close']]
+close_markup = ReplyKeyboardMarkup(close_keyboard, one_time_keyboard=False)
 
 
 async def echo(update, context):
@@ -70,28 +74,69 @@ async def unset(update, context):
     await update.message.reply_text(text)
 
 
+async def set_timer_game(update, context):
+    chat_id = update.effective_message.chat_id
+    seconds = int(context.args[0])
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    context.job_queue.run_once(end, seconds, chat_id=chat_id, name=str(chat_id), data=seconds)
+    if seconds < 60:
+        text = f'засёк {seconds} секунд'
+    else:
+        text = f'засёк {seconds // 60} минут'
+    if job_removed:
+        text += 'старый таймер сброшен'
+    await update.effective_message.reply_text(text)
+
+
+async def roll(update, context):
+    dice_roll = context.args[0]
+    if dice_roll == '1x6':
+        text = f'выпало {random.randint(1, 7)}'
+    elif dice_roll == '2x6':
+        text = f'на первом кубике выпало {random.randint(1, 7)}, на втором - {random.randint(1, 7)}'
+    else:
+        text = f'выпало {random.randint(1, 21)}'
+    await update.effective_message.reply_text(text)
+
+
+async def end(context):
+    if context.job.data < 60:
+        time_text = "30 секунд истекло"
+    else:
+        time_text = f"{context.job.data // 60} минут истекло"
+    await context.bot.send_message(context.job.chat_id, text=time_text)
+
+
+async def close(update, context):
+    chat_id = update.message.chat_id
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    text = 'таймер отменен' if job_removed else 'У вас нет активных таймеров'
+    await update.message.reply_text(text)
+
+
 async def start(update, context):
-    await update.message.reply_text (
+    await update.message.reply_text(
         "Привет. Я помощник для настольных игр. Выберите желаемое действие.", reply_markup=start_markup)
-    return 1
+    if update.message.text == '/timer':
+        return 1
+    else:
+        return 3
 
 
 async def dice(update, context):
-    locality = update.message.text
-    await update.message.reply_text (
-        f"Какая погода в городе {locality}?")
-    return 2
+    await update.message.reply_text(f"Выберите, как будете кидать кубик", reply_markup=roll_markup)
+    return 4
 
 
 async def timer(update, context):
     weather = update.message.text
     logger.info(weather)
-    await update.message.reply_text("Спасибо за участие в опросе! Всего доброго!")
-    return ConversationHandler.END
+    await update.message.reply_text("Выберите срок для таймера", reply_markup=timer_markup)
+    return 2
 
 
 async def stop(update, context):
-    await update.message.reply_text ("Всего доброго!")
+    await update.message.reply_text("Всего доброго!")
     return ConversationHandler.END
 
 
@@ -106,8 +151,17 @@ def main():
         entry_points=[CommandHandler('start', start)],
 
         states={
-            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, first_response)],
-            2: [MessageHandler(filters.TEXT & ~filters.COMMAND, second_response)]
+            3: [CommandHandler("dice", dice)],
+            4: [CommandHandler("roll", roll)]
+        },
+        fallbacks=[CommandHandler('stop', stop)]
+    ))
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+
+        states={
+            1: [CommandHandler("timer", timer)],
+            2: [CommandHandler("set_timer_game", set_timer_game)]
         },
         fallbacks=[CommandHandler('stop', stop)]
     ))
