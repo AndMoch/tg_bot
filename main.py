@@ -85,7 +85,7 @@ async def set_timer_game(update, context):
         text = f'засёк {seconds // 60} минут'
     if job_removed:
         text += 'старый таймер сброшен'
-    await update.effective_message.reply_text(text)
+    await update.effective_message.reply_text(text, reply_markup=close_markup)
 
 
 async def roll(update, context):
@@ -136,7 +136,7 @@ async def timer(update, context):
 
 
 async def stop(update, context):
-    await update.message.reply_text("Всего доброго!")
+    await update.message.reply_text("Всего доброго!", reply_markup=start_markup)
     return ConversationHandler.END
 
 
